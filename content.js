@@ -230,6 +230,13 @@
         color: var(--fgColor-muted, #57606a);
         opacity: 0.65;
       }
+      #${PANEL_ID} .md-pr-powered-link {
+        color: inherit;
+        text-decoration: none;
+      }
+      #${PANEL_ID} .md-pr-powered-link:hover {
+        text-decoration: underline;
+      }
       .md-pr-list-indicator {
         display: inline-flex;
         align-items: center;
@@ -477,7 +484,7 @@
           <input id="${PANEL_ID}-api-key" type="password" data-config="apiKey" />
           <div class="md-pr-status"></div>
         </div>
-        <div class="md-pr-powered">Powered by the Open Source Explorer</div>
+        <div class="md-pr-powered">Powered by the <a class="md-pr-powered-link" href="https://explore.market.dev" target="_blank" rel="noopener noreferrer">Open Source Explorer</a></div>
       </div>
     `;
 
@@ -681,7 +688,7 @@
         ` : ""}
         ${maintainerItems.length ? `
           <div class="md-pr-section">
-            <div class="md-pr-section-title">Projects</div>
+            <div class="md-pr-section-title">Notable Projects</div>
             <div class="md-pr-project-list">
               ${maintainerItems
                 .map(
