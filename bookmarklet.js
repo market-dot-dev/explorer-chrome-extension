@@ -14,7 +14,9 @@
 
   const state = {
     config: loadConfig(),
-    currentResult: null
+    currentResult: null,
+    mountRetryTimer: null,
+    mountRetryCount: 0
   };
 
   function loadConfig() {
@@ -43,116 +45,94 @@
     style.id = STYLE_ID;
     style.textContent = `
       #${PANEL_ID} {
-        position: fixed;
-        right: 16px;
-        bottom: 16px;
-        z-index: 999999;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-        color: #1f2328;
+        color: var(--fgColor-default, #24292f);
+      }
+      #${PANEL_ID}.discussion-sidebar-item {
+        margin-top: 0;
+      }
+      #${PANEL_ID}.md-pr-fallback {
+        margin: 16px 0;
       }
       #${PANEL_ID} .md-pr-panel {
-        width: 440px;
-        background: #ffffff;
-        border: 1px solid #d0d7de;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(27, 31, 36, 0.12);
-        padding: 12px 12px 10px;
-        font-size: 14px;
+        font-size: 12px;
+        line-height: 1.5;
       }
       #${PANEL_ID} .md-pr-header {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: center;
-        gap: 8px;
-        font-weight: 600;
-        font-size: 13px;
+        margin-bottom: 6px;
+      }
+      #${PANEL_ID} .md-pr-heading {
+        margin: 0;
       }
       #${PANEL_ID} .md-pr-gear {
         border: none;
-        background: #f6f8fa;
-        border-radius: 6px;
-        width: 28px;
-        height: 28px;
+        background: transparent;
+        color: var(--fgColor-muted, #57606a);
+        width: 20px;
+        height: 20px;
+        padding: 0;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        border: 1px solid #d0d7de;
-        color: #57606a;
       }
-      #${PANEL_ID} .md-pr-body {
-        margin-top: 10px;
+      #${PANEL_ID} .md-pr-gear:hover {
+        color: var(--fgColor-default, #24292f);
       }
       #${PANEL_ID} .md-pr-settings {
         display: none;
-        margin-top: 10px;
-        border-top: 1px dashed #d0d7de;
-        padding-top: 10px;
+        margin-top: 8px;
       }
       #${PANEL_ID} .md-pr-settings.md-pr-open {
         display: block;
       }
-      #${PANEL_ID} label {
+      #${PANEL_ID} .md-pr-settings label {
         display: block;
-        margin-bottom: 6px;
-        font-weight: 600;
+        margin-bottom: 4px;
         font-size: 12px;
-        color: #57606a;
+        color: var(--fgColor-muted, #57606a);
       }
-      #${PANEL_ID} input[type="text"],
-      #${PANEL_ID} input[type="password"] {
+      #${PANEL_ID} .md-pr-settings input[type="password"] {
         width: 100%;
-        border: 1px solid #d0d7de;
+        border: 1px solid var(--borderColor-default, #d0d7de);
         border-radius: 6px;
-        padding: 6px 8px;
-        font-size: 14px;
-        background: #ffffff;
-        margin-bottom: 8px;
+        padding: 5px 8px;
+        font-size: 12px;
+        color: var(--fgColor-default, #24292f);
+        background: var(--bgColor-default, #ffffff);
       }
       #${PANEL_ID} .md-pr-status {
-        margin-top: 8px;
-        color: #57606a;
+        color: var(--fgColor-muted, #57606a);
       }
       #${PANEL_ID} .md-pr-warning {
-        color: #cf222e;
-        font-weight: 600;
-      }
-      #${PANEL_ID} .md-pr-success {
-        color: #1a7f37;
-        font-weight: 600;
+        color: var(--fgColor-danger, #cf222e);
       }
       #${PANEL_ID} .md-pr-details {
-        margin-top: 6px;
-        color: #24292f;
+        color: var(--fgColor-muted, #57606a);
       }
       #${PANEL_ID} .md-pr-summary {
-        margin-top: 6px;
-        font-size: 18px;
-        color: #24292f;
-        font-weight: 600;
-      }
-      #${PANEL_ID} .md-pr-card {
-        border: 1px solid #d0d7de;
-        border-radius: 10px;
-        padding: 12px;
+        margin-bottom: 8px;
+        color: var(--fgColor-default, #24292f);
       }
       #${PANEL_ID} .md-pr-card-header {
         display: flex;
-        gap: 12px;
-        align-items: center;
+        gap: 8px;
+        align-items: flex-start;
       }
       #${PANEL_ID} .md-pr-avatar {
-        width: 56px;
-        height: 56px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
-        background: #f6f8fa;
-        border: 1px solid #d0d7de;
         overflow: hidden;
+        background: var(--bgColor-muted, #f6f8fa);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         font-weight: 600;
-        color: #57606a;
+        color: var(--fgColor-muted, #57606a);
+        flex-shrink: 0;
       }
       #${PANEL_ID} .md-pr-avatar img {
         width: 100%;
@@ -160,144 +140,73 @@
         object-fit: cover;
       }
       #${PANEL_ID} .md-pr-name {
-        font-size: 18px;
-        font-weight: 700;
-        color: #1a7f37;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--fgColor-default, #24292f);
       }
       #${PANEL_ID} .md-pr-meta {
-        margin-top: 6px;
-        color: #57606a;
-        font-size: 14px;
-      }
-      #${PANEL_ID} .md-pr-links {
-        margin-top: 6px;
-        display: flex;
-        gap: 12px;
-        font-size: 14px;
+        color: var(--fgColor-muted, #57606a);
       }
       #${PANEL_ID} .md-pr-link {
-        color: #0969da;
-        font-weight: 600;
-      }
-      #${PANEL_ID} .md-pr-stats {
-        margin-top: 12px;
-        border: 1px solid #d0d7de;
-        border-radius: 8px;
-        overflow: hidden;
-      }
-      #${PANEL_ID} .md-pr-stat-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 10px;
-        border-bottom: 1px solid #d0d7de;
-        font-size: 14px;
-      }
-      #${PANEL_ID} .md-pr-stat-row:last-child {
-        border-bottom: none;
-      }
-      #${PANEL_ID} .md-pr-stat-label {
-        color: #57606a;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-weight: 600;
-        font-size: 11px;
-      }
-      #${PANEL_ID} .md-pr-stat-value {
-        font-weight: 700;
-        color: #24292f;
-      }
-      #${PANEL_ID} .md-pr-section {
-        margin-top: 12px;
-      }
-      #${PANEL_ID} .md-pr-section-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: #57606a;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin-bottom: 6px;
-      }
-      #${PANEL_ID} .md-pr-ecosystems {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-      #${PANEL_ID} .md-pr-ecosystem-pill {
-        display: inline-flex;
-        align-items: center;
-        background: #f6f8fa;
-        border: 1px solid #d0d7de;
-        border-radius: 999px;
-        padding: 2px 8px;
-        font-size: 13px;
-        color: #57606a;
+        color: var(--fgColor-accent, #0969da);
         text-decoration: none;
       }
-      #${PANEL_ID} .md-pr-project-list {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
+      #${PANEL_ID} .md-pr-link:hover {
+        text-decoration: underline;
       }
-      #${PANEL_ID} .md-pr-project-item {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-        font-size: 14px;
-        color: #24292f;
+      #${PANEL_ID} .md-pr-stats {
+        margin-top: 8px;
       }
-      #${PANEL_ID} .md-pr-project-meta {
-        color: #57606a;
-        font-size: 13px;
+      #${PANEL_ID} .md-pr-stat-item {
+        color: var(--fgColor-default, #24292f);
+      }
+      #${PANEL_ID} .md-pr-stat-label {
+        color: var(--fgColor-muted, #57606a);
+      }
+      #${PANEL_ID} .md-pr-stat-sep {
+        margin: 0 4px;
+        color: var(--fgColor-muted, #57606a);
       }
       #${PANEL_ID} .md-pr-section {
         margin-top: 8px;
       }
       #${PANEL_ID} .md-pr-section-title {
+        margin-bottom: 2px;
+        font-weight: 600;
+        color: var(--fgColor-muted, #57606a);
+      }
+      #${PANEL_ID} .md-pr-ecosystems {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      #${PANEL_ID} .md-pr-ecosystem-pill {
+        color: var(--fgColor-accent, #0969da);
+        text-decoration: none;
+      }
+      #${PANEL_ID} .md-pr-ecosystem-pill:hover {
+        text-decoration: underline;
+      }
+      #${PANEL_ID} .md-pr-project-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      #${PANEL_ID} .md-pr-project-item {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      #${PANEL_ID} .md-pr-project-meta {
+        color: var(--fgColor-muted, #57606a);
+        flex-shrink: 0;
+      }
+      #${PANEL_ID} .md-pr-powered {
+        margin-top: 8px;
         font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: #6b7280;
-        margin-bottom: 4px;
-      }
-      #${PANEL_ID} .md-pr-stats {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 6px;
-      }
-      #${PANEL_ID} .md-pr-stat {
-        background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 6px;
-        text-align: center;
-      }
-      #${PANEL_ID} .md-pr-stat-label {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #6b7280;
-      }
-      #${PANEL_ID} .md-pr-stat-value {
-        font-size: 13px;
-        font-weight: 600;
-        color: #111827;
-      }
-      #${PANEL_ID} .md-pr-pill {
-        display: inline-flex;
-        align-items: center;
-        padding: 2px 6px;
-        border-radius: 999px;
-        background: #eef2ff;
-        color: #3730a3;
-        font-size: 11px;
-        margin-right: 4px;
-        margin-bottom: 4px;
-      }
-      #${PANEL_ID} .md-pr-link {
-        color: #0a3069;
-        font-weight: 600;
+        color: var(--fgColor-muted, #57606a);
+        opacity: 0.65;
       }
       #${BADGE_ID} {
         display: inline-flex;
@@ -321,10 +230,177 @@
     document.head.appendChild(style);
   }
 
+  function clearMountRetry() {
+    if (!state.mountRetryTimer) return;
+    window.clearTimeout(state.mountRetryTimer);
+    state.mountRetryTimer = null;
+  }
+
+  function scheduleMountRetry() {
+    if (state.mountRetryTimer || state.mountRetryCount >= 40 || !isPullDetailPage()) return;
+    state.mountRetryTimer = window.setTimeout(() => {
+      state.mountRetryTimer = null;
+      state.mountRetryCount += 1;
+      ensurePanel();
+    }, 250);
+  }
+
+  function normalizeText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  function isVisibleElement(element) {
+    return Boolean(element && element.isConnected && element.getClientRects().length > 0);
+  }
+
+  function findSidebar() {
+    const selectors = [
+      ".discussion-sidebar",
+      ".Layout-sidebar .discussion-sidebar",
+      ".Layout-sidebar",
+      ".js-discussion-sidebar",
+      "#partial-discussion-sidebar",
+      "[data-testid*='sidebar']",
+      "aside"
+    ];
+
+    const seen = new Set();
+    const candidates = [];
+
+    for (const selector of selectors) {
+      document.querySelectorAll(selector).forEach((element) => {
+        if (seen.has(element)) return;
+        seen.add(element);
+        candidates.push(element);
+      });
+    }
+
+    const scoredVisible = candidates
+      .filter((element) => isVisibleElement(element))
+      .map((element) => {
+        const text = normalizeText(element.textContent);
+        let score = 0;
+        if (text.includes("reviewers")) score += 5;
+        if (text.includes("assignees")) score += 2;
+        if (normalizeText(element.className).includes("sidebar")) score += 2;
+        if (element.tagName === "ASIDE") score += 1;
+        return { element, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    if (scoredVisible.length) return scoredVisible[0].element;
+
+    if (candidates.length) return candidates[0];
+
+    return null;
+  }
+
+  function findReviewersSection(sidebar) {
+    const roots = [];
+    if (sidebar) roots.push(sidebar);
+    const discoveredSidebar = findSidebar();
+    if (discoveredSidebar && !roots.includes(discoveredSidebar)) roots.push(discoveredSidebar);
+    roots.push(document);
+
+    for (const root of roots) {
+      const byClass = root.querySelector(
+        ".discussion-sidebar-item.sidebar-reviewers, .js-discussion-sidebar-item.sidebar-reviewers"
+      );
+      if (byClass && isVisibleElement(byClass)) return byClass;
+
+      const byTestId = root.querySelector("[data-testid*='reviewer']");
+      if (byTestId && isVisibleElement(byTestId)) {
+        const item = byTestId.closest(
+          ".discussion-sidebar-item, .js-discussion-sidebar-item, [class*='sidebar-item'], section, li"
+        );
+        if (item && isVisibleElement(item)) return item;
+      }
+
+      const headings = root.querySelectorAll(".discussion-sidebar-heading, h2, h3, h4, [role='heading']");
+      for (const heading of headings) {
+        if (normalizeText(heading.textContent) !== "reviewers") continue;
+        const item = heading.closest(
+          ".discussion-sidebar-item, .js-discussion-sidebar-item, [class*='sidebar-item'], section, li, aside"
+        );
+        if (item && isVisibleElement(item)) return item;
+      }
+    }
+
+    return null;
+  }
+
+  function findFallbackAnchor() {
+    const selectors = [
+      ".gh-header-show",
+      ".gh-header-meta",
+      ".js-pull-discussion-timeline",
+      "main [data-testid='issue-viewer']",
+      "main"
+    ];
+
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element && isVisibleElement(element)) return element;
+    }
+
+    return null;
+  }
+
+  function setWrapperPlacementClass(wrapper, inSidebar) {
+    if (inSidebar) {
+      wrapper.classList.add("discussion-sidebar-item");
+      wrapper.classList.remove("md-pr-fallback");
+      return;
+    }
+
+    wrapper.classList.remove("discussion-sidebar-item");
+    wrapper.classList.add("md-pr-fallback");
+  }
+
+  function mountPanel(wrapper) {
+    const reviewersSection = findReviewersSection();
+    if (reviewersSection) {
+      setWrapperPlacementClass(wrapper, true);
+      if (reviewersSection.nextElementSibling !== wrapper) {
+        reviewersSection.insertAdjacentElement("afterend", wrapper);
+      }
+      return true;
+    }
+
+    const sidebar = findSidebar();
+    if (sidebar) {
+      setWrapperPlacementClass(wrapper, true);
+      if (wrapper.parentElement !== sidebar) {
+        sidebar.appendChild(wrapper);
+      }
+      return true;
+    }
+
+    const fallbackAnchor = findFallbackAnchor();
+    if (fallbackAnchor) {
+      setWrapperPlacementClass(wrapper, false);
+      if (fallbackAnchor.tagName === "MAIN") {
+        if (wrapper.parentElement !== fallbackAnchor || fallbackAnchor.firstElementChild !== wrapper) {
+          fallbackAnchor.prepend(wrapper);
+        }
+        return true;
+      }
+
+      if (fallbackAnchor.nextElementSibling !== wrapper) {
+        fallbackAnchor.insertAdjacentElement("afterend", wrapper);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
   function ensurePanel() {
     const existing = document.getElementById(PANEL_ID);
     if (!isPullDetailPage()) {
       if (existing) existing.remove();
+      clearMountRetry();
+      state.mountRetryCount = 0;
       removeBadge();
       return;
     }
@@ -332,6 +408,12 @@
     ensureStyles();
 
     if (existing) {
+      if (!mountPanel(existing)) {
+        scheduleMountRetry();
+        return;
+      }
+      clearMountRetry();
+      state.mountRetryCount = 0;
       updatePanel(existing);
       return;
     }
@@ -341,7 +423,7 @@
     wrapper.innerHTML = `
       <div class="md-pr-panel">
         <div class="md-pr-header">
-          <span></span>
+          <h3 class="discussion-sidebar-heading md-pr-heading">Contributor insights</h3>
           <button class="md-pr-gear" type="button" aria-label="Settings">
             <span aria-hidden="true">⚙</span>
           </button>
@@ -352,10 +434,11 @@
           <div class="md-pr-details"></div>
         </div>
         <div class="md-pr-settings ${state.config.settingsOpen ? "md-pr-open" : ""}">
-          <label>API key</label>
-          <input type="password" data-config="apiKey" />
+          <label for="${PANEL_ID}-api-key">API key</label>
+          <input id="${PANEL_ID}-api-key" type="password" data-config="apiKey" />
           <div class="md-pr-status"></div>
         </div>
+        <div class="md-pr-powered">Powered by the Open Source Explorer</div>
       </div>
     `;
 
@@ -374,7 +457,14 @@
       });
     });
 
-    document.body.appendChild(wrapper);
+    if (!mountPanel(wrapper)) {
+      scheduleMountRetry();
+      return;
+    }
+
+    clearMountRetry();
+    state.mountRetryCount = 0;
+
     updatePanel(wrapper);
   }
 
@@ -420,8 +510,8 @@
       statusBlocks.forEach((status) => {
         status.innerHTML = "";
       });
-      summary.innerHTML = `No profile found on the Open Source Explorer. <a class="md-pr-link" href="https://explore.market.dev" target="_blank" rel="noopener noreferrer">Explore</a>`;
-      details.innerHTML = "";
+      summary.textContent = "No contributor profile found yet.";
+      details.textContent = "";
       return;
     }
 
@@ -523,26 +613,17 @@
             ${avatarUrl ? `<img src="${avatarUrl}" alt="${name}" />` : name.slice(0, 1).toUpperCase()}
           </div>
           <div>
-            <div class="md-pr-name">${name}</div>
+            <div class="md-pr-name"><a class="md-pr-link" href="https://github.com/${encodeURIComponent(username)}" target="_blank" rel="noopener noreferrer">${name}</a></div>
             <div class="md-pr-meta">@${username}${location ? ` · ${location}` : ""}</div>
-            <div class="md-pr-links">
-              <a class="md-pr-link" href="https://github.com/${encodeURIComponent(username)}" target="_blank" rel="noopener noreferrer">GitHub</a>
-              <a class="md-pr-link" href="${profileUrl}" target="_blank" rel="noopener noreferrer">Explore</a>
-            </div>
           </div>
         </div>
         ${stats.length ? `
           <div class="md-pr-stats">
             ${stats
               .map(
-                (stat) => `
-                  <div class="md-pr-stat-row">
-                    <span class="md-pr-stat-label">${stat.label}</span>
-                    <span class="md-pr-stat-value">${stat.value}</span>
-                  </div>
-                `
+                (stat) => `<span class="md-pr-stat-item"><span class="md-pr-stat-label">${stat.label}:</span> ${stat.value}</span>`
               )
-              .join("")}
+              .join('<span class="md-pr-stat-sep">·</span>')}
           </div>
         ` : ""}
         ${ecosystemNames.length ? `
@@ -676,9 +757,3 @@
     init();
   }
 })();
-      #${PANEL_ID} .md-pr-summary {
-        margin-top: 6px;
-        font-size: 13px;
-        color: #111827;
-        font-weight: 600;
-      }
