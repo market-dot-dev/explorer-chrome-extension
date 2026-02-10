@@ -1,4 +1,4 @@
-# PR Review Chrome Extension
+# Contributor Insights Chrome Extension
 
 This is a Chrome extension and bookmarklet that provides additional contributor information on Github pull requests pages. Data is from the Open Source Explorer (https://explore.market.dev).
 
