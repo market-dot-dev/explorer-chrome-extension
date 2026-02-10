@@ -1,6 +1,6 @@
 # Explore.market.dev Chrome Extension
 
-Chrome extension and bookmarklet that pulls in data from the Open Source Explorer (https://explore.market.dev)
+Chrome extension and bookmarklet for Github pull requests, that pulls in data from the Open Source Explorer (https://explore.market.dev)
 
 ## Features
 
