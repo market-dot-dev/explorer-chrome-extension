@@ -441,7 +441,7 @@
           <div class="md-pr-details"></div>
         </div>
         <div class="md-pr-settings ${state.config.settingsOpen ? "md-pr-open" : ""}">
-          <label for="${PANEL_ID}-api-key">API key</label>
+          <label for="${PANEL_ID}-api-key">API key (optional)</label>
           <input id="${PANEL_ID}-api-key" type="password" data-config="apiKey" />
           <div class="md-pr-status"></div>
         </div>
@@ -495,14 +495,14 @@
       return;
     }
 
-    if (result.state === "missing-key") {
-      statusBlocks.forEach((status) => {
-        status.innerHTML = `<span class="md-pr-warning">API key required</span>`;
-      });
-      summary.textContent = "";
-      details.textContent = "";
-      return;
-    }
+    // if (result.state === "missing-key") {
+    //   statusBlocks.forEach((status) => {
+    //     status.innerHTML = `<span class="md-pr-warning">API key required</span>`;
+    //   });
+    //   summary.textContent = "";
+    //   details.textContent = "";
+    //   return;
+    // }
 
     if (result.state === "error") {
       statusBlocks.forEach((status) => {
@@ -689,7 +689,8 @@
     if (!header) return;
 
     removeBadge();
-    if (!result || result.state === "error" || result.state === "missing-key") return;
+    // if (!result || result.state === "error" || result.state === "missing-key") return;
+    if (!result || result.state === "error") return;
 
     const badge = document.createElement("span");
     badge.id = BADGE_ID;
@@ -703,16 +704,20 @@
 
   async function fetchExpert(username) {
     const apiKey = String(state.config.apiKey || "").trim();
-    if (!apiKey) return { state: "missing-key" };
+    // if (!apiKey) return { state: "missing-key" };
 
     const url = `https://explore.market.dev/api/v1/experts/${encodeURIComponent(username)}`;
 
     try {
+      const headers = {
+        Accept: "application/json"
+      };
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
+
       const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: "application/json"
-        }
+        headers
       });
       const text = await response.text();
       let data = null;

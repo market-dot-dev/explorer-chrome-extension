@@ -1,11 +1,17 @@
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.type !== "md-expert-pr-check") return;
 
+  const headers = {
+    // Authorization: `Bearer ${message.apiKey || ""}`,
+    Accept: "application/json"
+  };
+
+  if (message.apiKey) {
+    headers.Authorization = `Bearer ${message.apiKey}`;
+  }
+
   fetch(message.url, {
-    headers: {
-      Authorization: `Bearer ${message.apiKey || ""}`,
-      Accept: "application/json"
-    }
+    headers
   })
     .then(async (response) => {
       let data = null;

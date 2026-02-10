@@ -31,4 +31,4 @@ If the bookmarklet fails, it is likely due to CORS restrictions. The Chrome exte
 ## Configuration notes
 
 - `API base URL` should point to a Market.dev host (default: `https://explore.market.dev`).
-- `API key` should be a valid `MARKET_API_KEY`.
+- `API key` is optional and only needed when the API is locked.

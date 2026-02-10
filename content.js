@@ -1,8 +1,11 @@
 (() => {
   const STORAGE_KEY = "md_expert_pr_config";
+  const NAV_CACHE_KEY = "md_expert_pr_nav_cache";
   const STYLE_ID = "md-expert-pr-style";
   const PANEL_ID = "md-expert-pr-panel";
   const BADGE_ID = "md-expert-pr-badge";
+  const NAV_BUTTONS_ID = "md-expert-pr-nav-buttons";
+  const NAV_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 8;
 
   const DEFAULT_CONFIG = {
     apiKey: "",
@@ -14,7 +17,12 @@
     currentResult: null,
     listCache: new Map(),
     mountRetryTimer: null,
-    mountRetryCount: 0
+    mountRetryCount: 0,
+    keyboardListenerAttached: false,
+    navMountRetryTimer: null,
+    navMountRetryCount: 0,
+    navViewportListenerAttached: false,
+    navRepositionFrame: null
   };
 
   function loadConfig() {
@@ -39,6 +47,297 @@
 
   function isPullListPage() {
     return /\/pulls(\/|$)/.test(window.location.pathname);
+  }
+
+  function normalizePullPath(urlLike) {
+    try {
+      const url = new URL(String(urlLike || ""), window.location.origin);
+      const match = url.pathname.match(/^\/[^/]+\/[^/]+\/pull\/\d+/);
+      return match ? match[0] : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function getRepoPathFromPullPath(pullPath) {
+    const match = String(pullPath || "").match(/^\/[^/]+\/[^/]+/);
+    return match ? match[0] : null;
+  }
+
+  function readNavigationCache() {
+    const raw = window.localStorage.getItem(NAV_CACHE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.pullPaths)) return null;
+      if (typeof parsed.updatedAt !== "number") return null;
+      return parsed;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeNavigationCache(pullPaths) {
+    if (!Array.isArray(pullPaths) || !pullPaths.length) return;
+    const repoPath = getRepoPathFromPullPath(pullPaths[0]);
+    if (!repoPath) return;
+
+    window.localStorage.setItem(
+      NAV_CACHE_KEY,
+      JSON.stringify({
+        repoPath,
+        listPath: window.location.pathname,
+        listSearch: window.location.search || "",
+        pullPaths,
+        updatedAt: Date.now()
+      })
+    );
+  }
+
+  function cachePullListOrder() {
+    if (!isPullListPage()) return;
+
+    const rows = document.querySelectorAll("div.js-issue-row");
+    const pullPaths = [];
+    const seen = new Set();
+
+    rows.forEach((row) => {
+      const titleLink =
+        row.querySelector("a[data-hovercard-type='pull_request']") ||
+        row.querySelector("a[id^='issue_']") ||
+        row.querySelector("a.Link--primary[href*='/pull/']");
+      if (!titleLink) return;
+
+      const pullPath = normalizePullPath(titleLink.getAttribute("href") || titleLink.href);
+      if (!pullPath || seen.has(pullPath)) return;
+
+      seen.add(pullPath);
+      pullPaths.push(pullPath);
+    });
+
+    writeNavigationCache(pullPaths);
+  }
+
+  function isEditableTarget(target) {
+    const element = target instanceof Element ? target : null;
+    if (!element) return false;
+    if (element.closest("input, textarea, select, button, [contenteditable=''], [contenteditable='true'], [role='textbox']")) {
+      return true;
+    }
+    return false;
+  }
+
+  function getAdjacentPullPath(direction) {
+    const currentPullPath = normalizePullPath(window.location.href);
+    if (!currentPullPath) return null;
+
+    const cache = readNavigationCache();
+    if (!cache) return null;
+    if (!Array.isArray(cache.pullPaths) || cache.pullPaths.length < 2) return null;
+    if (Date.now() - cache.updatedAt > NAV_CACHE_MAX_AGE_MS) return null;
+
+    const repoPath = getRepoPathFromPullPath(currentPullPath);
+    if (!repoPath || cache.repoPath !== repoPath) return null;
+
+    const currentIndex = cache.pullPaths.indexOf(currentPullPath);
+    if (currentIndex === -1) return null;
+
+    const targetIndex = (currentIndex + direction + cache.pullPaths.length) % cache.pullPaths.length;
+    if (targetIndex === currentIndex) return null;
+
+    return cache.pullPaths[targetIndex];
+  }
+
+  function navigateToAdjacentPull(direction) {
+    const targetPath = getAdjacentPullPath(direction);
+    if (!targetPath) return false;
+    window.location.assign(targetPath);
+    return true;
+  }
+
+  function handlePullNavigationShortcut(event) {
+    if (!isPullDetailPage()) return;
+    if (event.defaultPrevented) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (isEditableTarget(event.target)) return;
+
+    let direction = 0;
+    if (event.key === "ArrowRight") direction = 1;
+    if (event.key === "ArrowLeft") direction = -1;
+    if (event.key === "]") direction = 1;
+    if (event.key === "[") direction = -1;
+    if (!direction) return;
+
+    const navigated = navigateToAdjacentPull(direction);
+    if (!navigated) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function ensureKeyboardShortcutBinding() {
+    if (state.keyboardListenerAttached) return;
+    state.keyboardListenerAttached = true;
+    document.addEventListener("keydown", handlePullNavigationShortcut, true);
+  }
+
+  function clearNavMountRetry() {
+    if (!state.navMountRetryTimer) return;
+    window.clearTimeout(state.navMountRetryTimer);
+    state.navMountRetryTimer = null;
+  }
+
+  function scheduleNavMountRetry() {
+    if (state.navMountRetryTimer || state.navMountRetryCount >= 40 || !isPullDetailPage()) return;
+    state.navMountRetryTimer = window.setTimeout(() => {
+      state.navMountRetryTimer = null;
+      state.navMountRetryCount += 1;
+      ensureNavButtons();
+    }, 250);
+  }
+
+  function queueNavButtonsRefresh() {
+    if (state.navRepositionFrame !== null) return;
+    state.navRepositionFrame = window.requestAnimationFrame(() => {
+      state.navRepositionFrame = null;
+      ensureNavButtons();
+    });
+  }
+
+  function ensureNavViewportBinding() {
+    if (state.navViewportListenerAttached) return;
+    state.navViewportListenerAttached = true;
+    window.addEventListener("resize", queueNavButtonsRefresh);
+    window.addEventListener("scroll", queueNavButtonsRefresh, true);
+  }
+
+  function getCodeButtonMatchScore(element) {
+    const text = normalizeText(element.textContent);
+    const ariaLabel = normalizeText(element.getAttribute("aria-label"));
+
+    let score = 0;
+    if (text === "code") score += 4;
+    else if (text.startsWith("code ")) score += 2;
+
+    if (ariaLabel === "code") score += 3;
+    else if (ariaLabel.startsWith("code ")) score += 2;
+
+    return score;
+  }
+
+  function findCodeButton() {
+    const sidebar = findSidebar();
+    const roots = [sidebar, document].filter(Boolean);
+    const seen = new Set();
+    const candidates = [];
+
+    roots.forEach((root) => {
+      root.querySelectorAll("button, summary, a").forEach((element) => {
+        if (seen.has(element)) return;
+        seen.add(element);
+
+        if (!isVisibleElement(element)) return;
+        if (element.closest(`#${PANEL_ID}`) || element.closest(`#${NAV_BUTTONS_ID}`)) return;
+
+        const textScore = getCodeButtonMatchScore(element);
+        if (!textScore) return;
+
+        const classText = normalizeText(element.className);
+        const rect = element.getBoundingClientRect();
+
+        let score = textScore;
+        if (sidebar && sidebar.contains(element)) score += 8;
+        if (classText.includes("btn") || classText.includes("button")) score += 2;
+        if (element.closest("details")) score += 1;
+        if (rect.width >= 80 && rect.width <= 240) score += 2;
+        if (rect.height >= 28 && rect.height <= 44) score += 1;
+
+        candidates.push({ element, score });
+      });
+    });
+
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0].element;
+  }
+
+  function updateNavButtonsState(wrapper) {
+    if (!wrapper) return;
+
+    const prevButton = wrapper.querySelector("[data-nav='prev']");
+    const nextButton = wrapper.querySelector("[data-nav='next']");
+    if (!prevButton || !nextButton) return;
+
+    const canGoPrev = Boolean(getAdjacentPullPath(-1));
+    const canGoNext = Boolean(getAdjacentPullPath(1));
+
+    prevButton.disabled = !canGoPrev;
+    nextButton.disabled = !canGoNext;
+
+    const disabledTitle = "Visit the repo PR list to enable";
+    prevButton.title = canGoPrev ? "Previous PR (ArrowLeft)" : disabledTitle;
+    nextButton.title = canGoNext ? "Next PR (ArrowRight)" : disabledTitle;
+  }
+
+  function ensureNavButtons() {
+    const existing = document.getElementById(NAV_BUTTONS_ID);
+
+    if (!isPullDetailPage()) {
+      if (existing) existing.remove();
+      clearNavMountRetry();
+      state.navMountRetryCount = 0;
+      return;
+    }
+
+    const codeButton = findCodeButton();
+    if (!codeButton) {
+      if (existing) existing.remove();
+      scheduleNavMountRetry();
+      return;
+    }
+
+    const codeRect = codeButton.getBoundingClientRect();
+    if (!codeRect.width || !codeRect.height) {
+      scheduleNavMountRetry();
+      return;
+    }
+
+    let wrapper = existing;
+    if (!wrapper) {
+      wrapper = document.createElement("div");
+      wrapper.id = NAV_BUTTONS_ID;
+      wrapper.innerHTML = `
+        <button class="md-pr-nav-btn" type="button" data-nav="prev" aria-label="Previous pull request">&#8592;</button>
+        <button class="md-pr-nav-btn" type="button" data-nav="next" aria-label="Next pull request">&#8594;</button>
+      `;
+
+      wrapper.querySelector("[data-nav='prev']")?.addEventListener("click", (event) => {
+        event.preventDefault();
+        navigateToAdjacentPull(-1);
+      });
+      wrapper.querySelector("[data-nav='next']")?.addEventListener("click", (event) => {
+        event.preventDefault();
+        navigateToAdjacentPull(1);
+      });
+    }
+
+    if (wrapper.parentElement !== document.body) {
+      document.body.appendChild(wrapper);
+    }
+
+    wrapper.style.left = `${Math.round(window.scrollX + codeRect.left)}px`;
+    wrapper.style.top = `${Math.round(window.scrollY + codeRect.bottom + 6)}px`;
+    wrapper.style.width = `${Math.round(codeRect.width)}px`;
+    wrapper.style.setProperty("--md-pr-nav-btn-height", `${Math.round(codeRect.height)}px`);
+
+    const borderRadius = window.getComputedStyle(codeButton).borderRadius;
+    if (borderRadius) {
+      wrapper.style.setProperty("--md-pr-nav-btn-radius", borderRadius);
+    }
+
+    updateNavButtonsState(wrapper);
+    clearNavMountRetry();
+    state.navMountRetryCount = 0;
   }
 
   function canUseBackground() {
@@ -236,6 +535,38 @@
       }
       #${PANEL_ID} .md-pr-powered-link:hover {
         text-decoration: underline;
+      }
+      #${NAV_BUTTONS_ID} {
+        position: absolute;
+        z-index: 30;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      #${NAV_BUTTONS_ID} .md-pr-nav-btn {
+        appearance: none;
+        border: 1px solid var(--button-default-borderColor-rest, var(--borderColor-default, #d0d7de));
+        background: var(--button-default-bgColor-rest, var(--bgColor-muted, #f6f8fa));
+        color: var(--button-default-fgColor-rest, var(--fgColor-default, #24292f));
+        border-radius: var(--md-pr-nav-btn-radius, 6px);
+        height: var(--md-pr-nav-btn-height, 32px);
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        line-height: 1;
+        letter-spacing: 0;
+        cursor: pointer;
+      }
+      #${NAV_BUTTONS_ID} .md-pr-nav-btn:hover:not(:disabled) {
+        background: var(--button-default-bgColor-hover, var(--bgColor-neutral-muted, #f3f4f6));
+      }
+      #${NAV_BUTTONS_ID} .md-pr-nav-btn:disabled {
+        cursor: default;
+        opacity: 0.55;
       }
       .md-pr-list-indicator {
         display: inline-flex;
@@ -480,7 +811,7 @@
           <div class="md-pr-details"></div>
         </div>
         <div class="md-pr-settings ${state.config.settingsOpen ? "md-pr-open" : ""}">
-          <label for="${PANEL_ID}-api-key">API key</label>
+          <label for="${PANEL_ID}-api-key">API key (optional)</label>
           <input id="${PANEL_ID}-api-key" type="password" data-config="apiKey" />
           <div class="md-pr-status"></div>
         </div>
@@ -538,14 +869,14 @@
       return;
     }
 
-    if (result.state === "missing-key") {
-      statusBlocks.forEach((status) => {
-        status.innerHTML = `<span class="md-pr-warning">API key required</span>`;
-      });
-      summary.textContent = "";
-      details.textContent = "";
-      return;
-    }
+    // if (result.state === "missing-key") {
+    //   statusBlocks.forEach((status) => {
+    //     status.innerHTML = `<span class="md-pr-warning">API key required</span>`;
+    //   });
+    //   summary.textContent = "";
+    //   details.textContent = "";
+    //   return;
+    // }
 
     if (result.state === "error") {
       statusBlocks.forEach((status) => {
@@ -732,7 +1063,8 @@
     if (!header) return;
 
     removeBadge();
-    if (!result || result.state === "error" || result.state === "missing-key") return;
+    // if (!result || result.state === "error" || result.state === "missing-key") return;
+    if (!result || result.state === "error") return;
 
     const badge = document.createElement("span");
     badge.id = BADGE_ID;
@@ -746,7 +1078,7 @@
 
   async function fetchExpert(username) {
     const apiKey = String(state.config.apiKey || "").trim();
-    if (!apiKey) return { state: "missing-key" };
+    // if (!apiKey) return { state: "missing-key" };
 
     const url = `https://explore.market.dev/api/v1/experts/${encodeURIComponent(username)}`;
 
@@ -759,11 +1091,15 @@
         responseStatus = backgroundResponse.status || 0;
         responseData = backgroundResponse.data || null;
       } else {
+        const headers = {
+          Accept: "application/json"
+        };
+        if (apiKey) {
+          headers.Authorization = `Bearer ${apiKey}`;
+        }
+
         const response = await fetch(url, {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            Accept: "application/json"
-          }
+          headers
         });
         responseStatus = response.status;
         const text = await response.text();
@@ -789,7 +1125,7 @@
     }
 
     const apiKey = String(state.config.apiKey || "").trim();
-    if (!apiKey) return null;
+    // if (!apiKey) return null;
 
     const url = `https://explore.market.dev/api/v1/experts/${encodeURIComponent(username)}`;
     try {
@@ -808,6 +1144,8 @@
 
   async function applyListIndicators() {
     if (!isPullListPage()) return;
+
+    cachePullListOrder();
 
     const rows = document.querySelectorAll("div.js-issue-row");
     rows.forEach((row) => {
@@ -830,6 +1168,7 @@
 
   async function applyCheck() {
     ensurePanel();
+    ensureNavButtons();
     if (!isPullDetailPage()) return;
 
     const username = findPrAuthor();
@@ -852,6 +1191,10 @@
   }
 
   function init() {
+    ensureKeyboardShortcutBinding();
+    ensureNavViewportBinding();
+    cachePullListOrder();
+    ensureNavButtons();
     applyCheck();
     applyListIndicators();
   }
