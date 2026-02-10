@@ -1,4 +1,4 @@
-# Chrome Extension for The Open Source Explorer
+# PR Review Chrome Extension
 
 This is a Chrome extension and bookmarklet that provides additional contributor information on Github pull requests pages. Data is from the Open Source Explorer (https://explore.market.dev).
 
