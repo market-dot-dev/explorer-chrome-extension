@@ -1,6 +1,6 @@
-# Market.dev GitHub Expert Filter
+# Explore.market.dev Chrome Extension
 
-Chrome extension and bookmarklet that hides GitHub content from users who are not recognized experts in the Market.dev experts API.
+Chrome extension and bookmarklet that pulls in data from the Open Source Explorer (https://explore.market.dev)
 
 ## Features
 
